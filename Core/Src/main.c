@@ -50,14 +50,15 @@ UART_HandleTypeDef huart1;
 int pulse =0;
 int counter =0 ;
 int counter2 =0;
-int flag =0;
 int delay =5000;
-int buttonstate =0;
-//uint8_t rx_data[10];
-//uint8_t tx_data[] = "receive ok \n";
-//uint8_t tx_led_5 [] = "5";
-//uint8_t tx_led_10 []= "10";
-//uint8_t tx_led_15 [] = "15";
+
+
+int firsttick =0;
+int holdtime=0;
+int lastInterrupt =0;
+
+
+
 uint8_t mode = 1 ;
 char Rx;
 
@@ -148,71 +149,37 @@ int main(void)
 //		  break;
 //	  } code sử dụng uart
 
-	  buttonstate = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);
-	  if(buttonstate == 0 && flag == 0){
+
+
+
+	  switch(mode){
+	  case 1:
 		  HAL_TIM_Base_Start_IT(&htim2);
 		  HAL_TIM_PWM_Stop_IT(&htim1, TIM_CHANNEL_1);
-		  setdelay(3000);
-		  while(1){
-			  buttonstate = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);
-			  if(buttonstate == 1){
-				  HAL_Delay(20);
-				  buttonstate = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);
-				  if(buttonstate == 0){
-					  flag =1;
-					  break;
-				  }
-
-			  }
-		  }
-
-
-	  }
-	  if (buttonstate == 0 && flag ==1){
-		  HAL_TIM_PWM_Stop_IT(&htim1, TIM_CHANNEL_1);
 		  setdelay(1000);
-
-		  while(1){
-			  buttonstate = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);
-			  if(buttonstate == 1){
-				  HAL_Delay(20);
-				  buttonstate = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);
-				  if(buttonstate == 0){
-					  flag =2;
-					  break;
-				  }
-
-			  }
-		  }
-
-	  }
-	  if(buttonstate == 0 && flag ==2){
+		  break;
+	  case 2:
+		  HAL_TIM_Base_Start_IT(&htim2);
+		  HAL_TIM_PWM_Stop_IT(&htim1, TIM_CHANNEL_1);
+		  setdelay(500);
+		  break;
+	  case 3:
 		  HAL_TIM_Base_Stop_IT(&htim2);
 		  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, GPIO_PIN_RESET);
 		  HAL_TIM_PWM_Start_IT(&htim1, TIM_CHANNEL_1);
 		  mode3();
-		  while(1){
-		  			  buttonstate = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);
-		  			  if(buttonstate == 1){
-		  				  HAL_Delay(20);
-		  				  buttonstate = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);
-		  				  if(buttonstate == 0){
-			  				  flag =0;
-
-			  				  break;
-		  				  }
-
-		  			  }
+		  break;
+	  case 4:
+		  HAL_TIM_Base_Start_IT(&htim2);
+		  HAL_TIM_PWM_Stop_IT(&htim1, TIM_CHANNEL_1);
+		  setdelay(200);
+		  break;
 	  }
 
-	  }
 
-//	  buttonstate = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);{
-//		  if(buttonstate == 1){
-//			  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-//		  }
-//		  else HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-//	  }
+
+
+
 
   }
   /* USER CODE END 3 */
@@ -423,6 +390,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
@@ -443,6 +411,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PB0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
   /*Configure GPIO pin : PA11 */
   GPIO_InitStruct.Pin = GPIO_PIN_11;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -450,12 +424,17 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+
 void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim){
 	if(htim->Instance == TIM1){
 		counter ++;
@@ -486,6 +465,39 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		}
 	}
 }
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+	if(GPIO_Pin == GPIO_PIN_0){
+
+		if(HAL_GetTick() - lastInterrupt < 30){
+			lastInterrupt = HAL_GetTick();
+			return;
+		}
+		lastInterrupt = HAL_GetTick();
+		}
+		if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0) == GPIO_PIN_RESET){
+			firsttick = HAL_GetTick();
+		}
+		else {
+
+				holdtime = HAL_GetTick() - firsttick;
+				if(holdtime < 3000 ){
+					mode++;
+					if(mode > 3) mode = 1;
+				}
+				else if(holdtime >= 3000){
+					mode = 4;
+				}
+
+
+
+
+		}
+	}
+
+
+
+
 
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
