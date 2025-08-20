@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "stm32f1xx_hal_tim.h"
+#include "stdio.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -40,6 +41,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 
@@ -56,7 +59,8 @@ int delay =5000;
 int firsttick =0;
 int holdtime=0;
 int lastInterrupt =0;
-
+uint16_t adc =0;
+uint16_t pwm_value =0;
 
 
 uint8_t mode = 1 ;
@@ -72,6 +76,7 @@ static void MX_GPIO_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 void mode1(int time);
 void mode3();
@@ -115,11 +120,14 @@ int main(void)
   MX_TIM1_Init();
   MX_USART1_UART_Init();
   MX_TIM2_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
+
   HAL_TIM_Base_Start(&htim1);
   HAL_TIM_Base_Start_IT(&htim2);
   HAL_TIM_PWM_Start_IT(&htim1, TIM_CHANNEL_1);
   HAL_UART_Receive_IT(&huart1, (uint8_t*)&Rx, 1);
+  HAL_ADC_Start(&hadc1);
 
   /* USER CODE END 2 */
 
@@ -130,6 +138,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+
+
 
 
 
@@ -170,10 +181,20 @@ int main(void)
 		  mode3();
 		  break;
 	  case 4:
+		  HAL_TIM_Base_Stop_IT(&htim2);
+		  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, GPIO_PIN_RESET);
+		  HAL_TIM_PWM_Start_IT(&htim1, TIM_CHANNEL_1);
+		  adc = HAL_ADC_GetValue(&hadc1);
+		  char buffer_adc [50];
+		  int lenght = snprintf(buffer_adc, sizeof(buffer_adc), "adc_value: %lu \r \n", adc);
+		  HAL_UART_Transmit(&huart1,(uint8_t*)buffer_adc, lenght, 500);
+		  HAL_Delay(100);
+	  case 5:
 		  HAL_TIM_Base_Start_IT(&htim2);
 		  HAL_TIM_PWM_Stop_IT(&htim1, TIM_CHANNEL_1);
 		  setdelay(200);
 		  break;
+
 	  }
 
 
@@ -193,6 +214,7 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -219,6 +241,59 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
+  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV2;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief ADC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC1_Init(void)
+{
+
+  /* USER CODE BEGIN ADC1_Init 0 */
+
+  /* USER CODE END ADC1_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC1_Init 1 */
+
+  /* USER CODE END ADC1_Init 1 */
+
+  /** Common config
+  */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
+  hadc1.Init.ContinuousConvMode = ENABLE;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.NbrOfConversion = 1;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_5;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_7CYCLES_5;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC1_Init 2 */
+
+  /* USER CODE END ADC1_Init 2 */
+
 }
 
 /**
@@ -437,16 +512,24 @@ static void MX_GPIO_Init(void)
 
 void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim){
 	if(htim->Instance == TIM1){
-		counter ++;
-		if(counter == 50){
-			counter=0;
-			pulse+=10;
-			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pulse);
-		}
-		if(pulse >= 1000){
-			pulse = 0;
 
+		if(mode == 4){
+			pwm_value =( adc * 999 ) / 4095;
+			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pwm_value);
 		}
+		else {
+					counter ++;
+					if(counter == 50){
+						counter=0;
+						pulse+=10;
+						__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pulse);
+					}
+					if(pulse >= 1000){
+						pulse = 0;
+
+					}
+		}
+
 	}
 }
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
@@ -469,12 +552,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	if(GPIO_Pin == GPIO_PIN_0){
 
-		if(HAL_GetTick() - lastInterrupt < 30){
+		if(HAL_GetTick() - lastInterrupt < 100){
 			lastInterrupt = HAL_GetTick();
 			return;
 		}
 		lastInterrupt = HAL_GetTick();
-		}
 		if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0) == GPIO_PIN_RESET){
 			firsttick = HAL_GetTick();
 		}
@@ -483,17 +565,15 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 				holdtime = HAL_GetTick() - firsttick;
 				if(holdtime < 3000 ){
 					mode++;
-					if(mode > 3) mode = 1;
+					if(mode > 4) mode = 1;
 				}
 				else if(holdtime >= 3000){
-					mode = 4;
-				}
 
-
-
-
+					mode = 5 ;
+			}
 		}
 	}
+}
 
 
 
