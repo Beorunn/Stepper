@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "stm32f1xx_hal_tim.h"
+#include "string.h"
 #include "stdio.h"
 /* USER CODE END Includes */
 
@@ -41,46 +41,29 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-ADC_HandleTypeDef hadc1;
-
 TIM_HandleTypeDef htim1;
-TIM_HandleTypeDef htim2;
 
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 
-int pulse =0;
-int counter =0 ;
-int counter2 =0;
-int delay =5000;
-
-
-int firsttick =0;
-int holdtime=0;
-int lastInterrupt =0;
-uint16_t adc =0;
-uint16_t pwm_value =0;
-
-
-uint8_t mode = 1 ;
-char Rx;
-
-
+// USE 1 input method
+// CW -> operating rotation signal output
+// CCW-> rotation direction signal output
+#define CCW GPIO_PIN_11
+// CW = TIM1_CH1 PA8
+uint8_t step_count = 0; // giá trị mỗi khi stepper quay 1 lần hay khi hết 1 xung arr
+char msg[30]; // giá trị step_count gửi qua uart
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_TIM1_Init(void);
 static void MX_USART1_UART_Init(void);
-static void MX_TIM2_Init(void);
-static void MX_ADC1_Init(void);
+static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
-void mode1(int time);
-void mode3();
-void setdelay(int time);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -117,18 +100,12 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_TIM1_Init();
   MX_USART1_UART_Init();
-  MX_TIM2_Init();
-  MX_ADC1_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_TIM_Base_Start(&htim1);
-  HAL_TIM_Base_Start_IT(&htim2);
   HAL_TIM_PWM_Start_IT(&htim1, TIM_CHANNEL_1);
-  HAL_UART_Receive_IT(&huart1, (uint8_t*)&Rx, 1);
-  HAL_ADC_Start(&hadc1);
-
+  HAL_GPIO_WritePin(GPIOA, CCW, GPIO_PIN_SET);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -138,70 +115,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-
-
-
-
-
-//	  switch(mode){
-//	  case 1:
-//
-//		  mode1(5000);
-//		  break;
-//	  case 2:
-//
-//		  mode1(10000);
-//		  break;
-//	  case 3:
-//		  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, GPIO_PIN_RESET);
-//		  break;
-//	  default:
-//		  break;
-//	  } code sử dụng uart
-
-
-
-
-	  switch(mode){
-	  case 1:
-		  HAL_TIM_Base_Start_IT(&htim2);
-		  HAL_TIM_PWM_Stop_IT(&htim1, TIM_CHANNEL_1);
-		  setdelay(1000);
-		  break;
-	  case 2:
-		  HAL_TIM_Base_Start_IT(&htim2);
-		  HAL_TIM_PWM_Stop_IT(&htim1, TIM_CHANNEL_1);
-		  setdelay(500);
-		  break;
-	  case 3:
-		  HAL_TIM_Base_Stop_IT(&htim2);
-		  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, GPIO_PIN_RESET);
-		  HAL_TIM_PWM_Start_IT(&htim1, TIM_CHANNEL_1);
-		  mode3();
-		  break;
-	  case 4:
-		  HAL_TIM_Base_Stop_IT(&htim2);
-		  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, GPIO_PIN_RESET);
-		  HAL_TIM_PWM_Start_IT(&htim1, TIM_CHANNEL_1);
-		  adc = HAL_ADC_GetValue(&hadc1);
-		  char buffer_adc [50];
-		  int lenght = snprintf(buffer_adc, sizeof(buffer_adc), "adc_value: %lu \r \n", adc);
-		  HAL_UART_Transmit(&huart1,(uint8_t*)buffer_adc, lenght, 500);
-		  HAL_Delay(100);
-	  case 5:
-		  HAL_TIM_Base_Start_IT(&htim2);
-		  HAL_TIM_PWM_Stop_IT(&htim1, TIM_CHANNEL_1);
-		  setdelay(200);
-		  break;
-
-	  }
-
-
-
-
-
-
   }
   /* USER CODE END 3 */
 }
@@ -214,7 +127,6 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -241,59 +153,6 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
-  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV2;
-  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
-  {
-    Error_Handler();
-  }
-}
-
-/**
-  * @brief ADC1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_ADC1_Init(void)
-{
-
-  /* USER CODE BEGIN ADC1_Init 0 */
-
-  /* USER CODE END ADC1_Init 0 */
-
-  ADC_ChannelConfTypeDef sConfig = {0};
-
-  /* USER CODE BEGIN ADC1_Init 1 */
-
-  /* USER CODE END ADC1_Init 1 */
-
-  /** Common config
-  */
-  hadc1.Instance = ADC1;
-  hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
-  hadc1.Init.ContinuousConvMode = ENABLE;
-  hadc1.Init.DiscontinuousConvMode = DISABLE;
-  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
-  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc1.Init.NbrOfConversion = 1;
-  if (HAL_ADC_Init(&hadc1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Regular Channel
-  */
-  sConfig.Channel = ADC_CHANNEL_5;
-  sConfig.Rank = ADC_REGULAR_RANK_1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_7CYCLES_5;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN ADC1_Init 2 */
-
-  /* USER CODE END ADC1_Init 2 */
-
 }
 
 /**
@@ -343,7 +202,7 @@ static void MX_TIM1_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
+  sConfigOC.Pulse = 500;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
@@ -368,51 +227,6 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 2 */
   HAL_TIM_MspPostInit(&htim1);
-
-}
-
-/**
-  * @brief TIM2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM2_Init(void)
-{
-
-  /* USER CODE BEGIN TIM2_Init 0 */
-
-  /* USER CODE END TIM2_Init 0 */
-
-  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-
-  /* USER CODE BEGIN TIM2_Init 1 */
-
-  /* USER CODE END TIM2_Init 1 */
-  htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 8-1;
-  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 1000-1;
-  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM2_Init 2 */
-
-  /* USER CODE END TIM2_Init 2 */
 
 }
 
@@ -462,46 +276,18 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11|GPIO_PIN_12, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin : PC13 */
-  GPIO_InitStruct.Pin = GPIO_PIN_13;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PA3 */
-  GPIO_InitStruct.Pin = GPIO_PIN_3;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PB0 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PA11 */
-  GPIO_InitStruct.Pin = GPIO_PIN_11;
+  /*Configure GPIO pins : PA11 PA12 */
+  GPIO_InitStruct.Pin = GPIO_PIN_11|GPIO_PIN_12;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -510,120 +296,20 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim){
-	if(htim->Instance == TIM1){
+void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
+{
+    if(htim->Instance == TIM1 )
+    {
+        step_count++;
 
-		if(mode == 4){
-			pwm_value =( adc * 999 ) / 4095;
-			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pwm_value);
-		}
-		else {
-					counter ++;
-					if(counter == 50){
-						counter=0;
-						pulse+=10;
-						__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pulse);
-					}
-					if(pulse >= 1000){
-						pulse = 0;
-
-					}
-		}
-
-	}
-}
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-	if(htim->Instance == TIM2){
-		counter2++;
-
-//		buttonstate = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);
-//		if(buttonstate == 0 && flag ==0)
-//			flag+=1;
-//		else if(buttonstate == 0 && flag ==1 )
-//			flag =0;
-
-		if(counter2 >= delay){
-			counter2=0;
-			HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_11);
-		}
-	}
-}
-
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
-	if(GPIO_Pin == GPIO_PIN_0){
-
-		if(HAL_GetTick() - lastInterrupt < 100){
-			lastInterrupt = HAL_GetTick();
-			return;
-		}
-		lastInterrupt = HAL_GetTick();
-		if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0) == GPIO_PIN_RESET){
-			firsttick = HAL_GetTick();
-		}
-		else {
-
-				holdtime = HAL_GetTick() - firsttick;
-				if(holdtime < 3000 ){
-					mode++;
-					if(mode > 4) mode = 1;
-				}
-				else if(holdtime >= 3000){
-
-					mode = 5 ;
-			}
-		}
-	}
-}
-
-
-
-
-
-
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
-	if( huart->Instance ==huart1.Instance){
-		switch(Rx){
-		case '1':
-			  HAL_TIM_PWM_Stop_IT(&htim1, TIM_CHANNEL_1);
-			__HAL_TIM_SET_COUNTER(&htim2, 0);
-			mode = 1;
-			break;
-		case '2':
-
-			  HAL_TIM_PWM_Stop_IT(&htim1, TIM_CHANNEL_1);
-			__HAL_TIM_SET_COUNTER(&htim2, 0);
-			mode = 2;
-			break;
-		case '3':
-
-			mode = 3;
-			HAL_TIM_PWM_Start_IT(&htim1, TIM_CHANNEL_1);
-		default:
-			break;
-		}
-		HAL_UART_Receive_IT(&huart1, (uint8_t*)&Rx, 1);
-	}
-
-}
-void mode3(){
-	  if(pulse >= 1000) {
-		  pulse =0;
-		  HAL_Delay(20);
-	  }
-	  pulse+=10;
-	  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1 , pulse );
-	  HAL_Delay(20);
-}
-void mode1(int time){
-	  uint32_t current_tick = __HAL_TIM_GET_COUNTER(&htim2);
-	  if(current_tick >= time){
-		  __HAL_TIM_SET_COUNTER(&htim2, 0);
-		  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_11 );
-	  }
-
-}
-void setdelay( int time){
-	delay = time;
+        sprintf(msg, "Step: %lu\r\n", step_count);
+        HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+        if(step_count >= 200)
+        {
+            step_count = 0;
+            HAL_GPIO_TogglePin(GPIOA, CCW); // Đảo DIR
+        }
+    }
 }
 
 
