@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "string.h"
 #include "stdio.h"
+#include "stdlib.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -51,9 +52,18 @@ UART_HandleTypeDef huart1;
 // CW -> operating rotation signal output
 // CCW-> rotation direction signal output
 #define CCW GPIO_PIN_11
+#define ENA GPIO_PIN_12
 // CW = TIM1_CH1 PA8
-uint8_t step_count = 0; // giá trị mỗi khi stepper quay 1 lần hay khi hết 1 xung arr
-char msg[30]; // giá trị step_count gửi qua uart
+uint16_t step_count = 0; // giá trị mỗi khi stepper quay 1 lần hay khi hết 1 xung arr
+char msg[64];
+
+uint8_t mode =0;
+uint8_t rxData;
+uint8_t rxBuffer[32];
+uint8_t rxIndex =0;
+uint8_t rounds =0;
+uint8_t dir =0;
+uint8_t CurrentRounds =0;
 
 /* USER CODE END PV */
 
@@ -105,7 +115,9 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   HAL_TIM_PWM_Start_IT(&htim1, TIM_CHANNEL_1);
+  HAL_UART_Receive_IT(&huart1, &rxData, 1);
   HAL_GPIO_WritePin(GPIOA, CCW, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOA, ENA, GPIO_PIN_RESET);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -115,6 +127,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+//	  for(int i = 0; i <= 200; i++)
+//	  {
+//		  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_SET);
+//	      HAL_Delay(50);
+//	      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
+//	      HAL_Delay(50);
+//	  }
+	  //HAL_Delay(5000);
+	  //HAL_GPIO_TogglePin(GPIOA, ENA);
   }
   /* USER CODE END 3 */
 }
@@ -300,18 +321,54 @@ void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
 {
     if(htim->Instance == TIM1 )
     {
-        step_count++;
 
-        sprintf(msg, "Step: %lu\r\n", step_count);
-        HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
-        if(step_count >= 200)
+        step_count++;
+//        sprintf(msg, "Step: %lu\r\n", step_count);
+//            HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+        if(step_count >=250)
         {
+        	CurrentRounds++;
             step_count = 0;
-            HAL_GPIO_TogglePin(GPIOA, CCW); // Đảo DIR
+            //HAL_GPIO_TogglePin(GPIOA, CCW); // Đảo DIR
+
         }
+        if(CurrentRounds >= rounds){
+        	//HAL_GPIO_WritePin(GPIOA, ENA, GPIO_PIN_RESET);
+        	HAL_TIM_PWM_Stop_IT(&htim1, TIM_CHANNEL_1);
+        	CurrentRounds =0;
+        }
+
+
     }
 }
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
+	if (huart->Instance == USART1){
+		if(rxData == '\n'){
+			rxBuffer[rxIndex] ='\0';
+
+			sscanf((char*)rxBuffer, "%d %d", &rounds, &dir);
+
+			sprintf(msg, "Rounds=%d, Dir=%d\r\n", rounds, dir);
+			if(dir==0)
+        	HAL_GPIO_WritePin(GPIOA, CCW, GPIO_PIN_RESET);
+			else
+	        HAL_GPIO_WritePin(GPIOA, CCW, GPIO_PIN_SET);
+			HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+
+			rxIndex =0;
+			memset(rxBuffer, 0, sizeof(rxBuffer));
+			HAL_TIM_PWM_Start_IT(&htim1, TIM_CHANNEL_1);
+		}
+		else {
+            if (rxIndex < sizeof(rxBuffer) - 1) {
+                rxBuffer[rxIndex++] = rxData;
+            }
+		}
+		HAL_UART_Receive_IT(&huart1, &rxData, 1);
+
+	}
+}
 
 /* USER CODE END 4 */
 
